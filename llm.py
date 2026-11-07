@@ -3,13 +3,14 @@ from google import genai
 from google.genai import errors
 from google.genai import types
 import httpx 
+import time
 
-MODELOS = ["gemini-3.8-flash", "gemini-flash-lite-latest"]   # principal, respaldo
+MODELOS = ["gemini-flash-lite-latest", "gemini-3.8-flash"]   # principal, respaldo
 
 load_dotenv()                      # carga .env → GEMINI_API_KEY queda en el entorno
 _client = genai.Client(
     http_options=types.HttpOptions(
-        timeout=15_000,                                       # ms: máximo 15 s por petición
+        timeout=30_000,                                       # ms: máximo 15 s por petición
         retry_options=types.HttpRetryOptions(attempts=2),     # 1 intento + 1 reintento
     )
 )
@@ -18,8 +19,10 @@ def _generar(contenidos, config=None) -> str:
     ultimo_error = None
     for modelo in MODELOS:
         try:
-            r = _client.models.generate_content(model=modelo, contents=contenidos, config=config)
-            return r
+               inicio = time.perf_counter()
+               r = _client.models.generate_content(model=modelo, contents=contenidos, config=config)
+               print(f"[{modelo}] {time.perf_counter() - inicio:.1f} s")
+               return r
         except (errors.ServerError, httpx.TimeoutException) as e:
             print(f"[aviso] {modelo} no disponible: {e}")
             ultimo_error = e
@@ -37,16 +40,16 @@ def _a_contenidos(historial: list[dict]) -> list:
 
 
 def preguntar(prompt: str) -> str:
-    return _generar(prompt).text
+    return _generar(prompt, _config()).text
 
 
 def responder(system_prompt: str, historial: list[dict]) -> str:
-    config = types.GenerateContentConfig(system_instruction=system_prompt, temperature=0.3)
+    config = _config(system_instruction=system_prompt, temperature=0.3)
     return _generar(_a_contenidos(historial), config).text
 
 
 def responder_estructurado(system_prompt: str, historial: list[dict], esquema):
-    config = types.GenerateContentConfig(
+    config = _config(
         system_instruction=system_prompt,
         temperature=0.3,
         response_mime_type="application/json",
@@ -58,5 +61,14 @@ def responder_estructurado(system_prompt: str, historial: list[dict], esquema):
     return resultado
 
 
+def _config(nivel: str = "low", **extra) -> types.GenerateContentConfig:
+    return types.GenerateContentConfig(
+        thinking_config=types.ThinkingConfig(thinking_level=nivel),
+        **extra,
+    )
+
+
 if __name__ == "__main__":
     print(preguntar("Explica en una frase qué es un IVR."))
+
+
