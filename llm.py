@@ -19,10 +19,10 @@ def _generar(contenidos, config=None) -> str:
     ultimo_error = None
     for modelo in MODELOS:
         try:
-               inicio = time.perf_counter()
-               r = _client.models.generate_content(model=modelo, contents=contenidos, config=config)
-               print(f"[{modelo}] {time.perf_counter() - inicio:.1f} s")
-               return r
+            inicio = time.perf_counter()
+            r = _client.models.generate_content(model=modelo, contents=contenidos, config=config)
+            print(f"[{modelo}] {time.perf_counter() - inicio:.1f} s")
+            return r
         except (errors.ServerError, httpx.TimeoutException) as e:
             print(f"[aviso] {modelo} no disponible: {e}")
             ultimo_error = e
@@ -66,6 +66,36 @@ def _config(nivel: str = "low", **extra) -> types.GenerateContentConfig:
         thinking_config=types.ThinkingConfig(thinking_level=nivel),
         **extra,
     )
+
+def responder_con_herramientas(
+    system_prompt: str,
+    historial: list[dict],
+    declaraciones: list[dict],
+    funciones: dict,
+) -> str:
+    contenidos = _a_contenidos(historial)
+    config = _config(
+        system_instruction=system_prompt,
+        temperature=0.3,
+        tools=[types.Tool(function_declarations=declaraciones)],
+        automatic_function_calling=types.AutomaticFunctionCallingConfig(disable=True),
+    )
+    for _ in range(3):                                   # máximo 3 rondas de herramientas por turno
+        r = _generar(contenidos, config)
+        llamadas = r.function_calls or []
+        if not llamadas:                                 # no pide herramienta → es la respuesta final
+            return r.text
+        contenidos.append(r.candidates[0].content)       # lo que pidió el modelo, tal cual
+        for llamada in llamadas:
+            funcion = funciones.get(llamada.name)
+            args = dict(llamada.args or {})
+            resultado = funcion(**args) if funcion else {"error": "herramienta_desconocida"}
+            print(f"     [herramienta] {llamada.name}({args}) → {resultado}")
+            contenidos.append(types.Content(
+                role="user",
+                parts=[types.Part.from_function_response(name=llamada.name, response=resultado)],
+            ))
+    raise RuntimeError("Demasiadas llamadas a herramientas en un mismo turno")
 
 
 if __name__ == "__main__":

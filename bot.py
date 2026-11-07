@@ -1,18 +1,28 @@
-from typing import Literal
-from pydantic import BaseModel, Field
-from llm import responder_estructurado
+from llm import responder_con_herramientas
+from herramientas import DECLARACIONES, FUNCIONES
 
+SYSTEM_PROMPT = """
+Eres el asistente telefónico de Tienda Demo, una tienda online ficticia.
 
-class Turno(BaseModel):
-    respuesta: str = Field(description="Lo que se le dice al cliente. Apto para leer en voz alta.")
-    intencion: Literal["saludo", "estado_pedido", "devolucion", "incidencia_pago",
-                       "hablar_con_agente", "fuera_de_alcance", "otro"]
-    numero_pedido: str | None = Field(default=None, description="Formato PED-12345, solo si el cliente lo ha dado")
-    siguiente_accion: Literal["responder", "pedir_dato", "consultar_pedido",
-                              "transferir_agente", "finalizar"]
+ALCANCE
+- Solo ayudas con: estado de pedidos, devoluciones e incidencias con el pago.
+- Para cualquier otra cosa, di amablemente que no puedes ayudar con eso y ofrece pasar con un agente.
 
+PEDIDOS
+- Para saber el estado de un pedido, usa SIEMPRE la herramienta consultar_pedido.
+- Nunca inventes datos de un pedido: di solo lo que devuelva la herramienta.
+- Si la herramienta devuelve formato_invalido, pide al cliente que repita el número (formato PED-12345).
+- Si devuelve no_encontrado, dilo y pide que lo compruebe.
+- No digas que vas a consultar algo: consúltalo y da el resultado.
 
-SYSTEM_PROMPT = """ ... el mismo de antes ... """   # deja el tuyo tal cual
+OTRAS REGLAS
+- Si el cliente pide hablar con una persona, o se le nota enfadado, ofrécele pasar con un agente.
+
+ESTILO (esto acabará siendo una llamada de voz)
+- Máximo dos frases por respuesta.
+- Nada de listas, viñetas, emojis ni formato: solo texto que se pueda leer en voz alta.
+- Español de España, tono cercano y profesional.
+""".strip()
 
 
 def main():
@@ -26,20 +36,14 @@ def main():
             continue
         historial.append({"rol": "usuario", "texto": texto})
         try:
-            turno = responder_estructurado(SYSTEM_PROMPT, historial, Turno)
+            respuesta = responder_con_herramientas(SYSTEM_PROMPT, historial, DECLARACIONES, FUNCIONES)
         except Exception as e:
-            print(f"[error] {type(e).__name__}: {e}")      # ← para ti, mientras desarrollas
+            print(f"[error] {type(e).__name__}: {e}")
             historial.pop()
             print("Bot: Ahora mismo tengo problemas técnicos. Te paso con un agente.\n")
             continue
-
-        historial.append({"rol": "bot", "texto": turno.respuesta})
-        print(f"Bot: {turno.respuesta}")
-        print(f"     [intención={turno.intencion} · pedido={turno.numero_pedido} · acción={turno.siguiente_accion}]\n")
-
-        if turno.siguiente_accion == "transferir_agente":      # ← decide tu código, no el LLM
-            print(">>> Transfiriendo a un agente… (fin de la simulación)")
-            break
+        historial.append({"rol": "bot", "texto": respuesta})
+        print(f"Bot: {respuesta}\n")
 
 
 if __name__ == "__main__":
