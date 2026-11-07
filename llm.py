@@ -21,7 +21,7 @@ def _generar(contenidos, config=None) -> str:
             r = _client.models.generate_content(model=modelo, contents=contenidos, config=config)
             return r
         except (errors.ServerError, httpx.TimeoutException) as e:
-            print(f"[aviso] {modelo} no disponible ({type(e).__name__}), probando el siguiente…")
+            print(f"[aviso] {modelo} no disponible: {e}")
             ultimo_error = e
             
     raise ultimo_error
@@ -56,3 +56,7 @@ def responder_estructurado(system_prompt: str, historial: list[dict], esquema):
     if resultado is None:
         raise ValueError("El modelo no devolvió un JSON válido")
     return resultado
+
+
+if __name__ == "__main__":
+    print(preguntar("Explica en una frase qué es un IVR."))
