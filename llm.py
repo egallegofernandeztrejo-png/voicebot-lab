@@ -80,17 +80,20 @@ def responder_con_herramientas(
         tools=[types.Tool(function_declarations=declaraciones)],
         automatic_function_calling=types.AutomaticFunctionCallingConfig(disable=True),
     )
+
+    realizadas = []                                      # ← antes del for _ in range(3)
     for _ in range(3):                                   # máximo 3 rondas de herramientas por turno
         r = _generar(contenidos, config)
         llamadas = r.function_calls or []
         if not llamadas:                                 # no pide herramienta → es la respuesta final
-            return r.text
+            return r.text, realizadas   
         contenidos.append(r.candidates[0].content)       # lo que pidió el modelo, tal cual
         for llamada in llamadas:
             funcion = funciones.get(llamada.name)
             args = dict(llamada.args or {})
             resultado = funcion(**args) if funcion else {"error": "herramienta_desconocida"}
             print(f"     [herramienta] {llamada.name}({args}) → {resultado}")
+            realizadas.append((llamada.name, args, resultado)) 
             contenidos.append(types.Content(
                 role="user",
                 parts=[types.Part.from_function_response(name=llamada.name, response=resultado)],

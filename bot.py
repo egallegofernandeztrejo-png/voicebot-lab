@@ -1,5 +1,6 @@
 from llm import responder_con_herramientas
 from herramientas import DECLARACIONES, FUNCIONES
+MAX_ERRORES_PEDIDO = 2
 
 SYSTEM_PROMPT = """
 Eres el asistente telefónico de Tienda Demo, una tienda online ficticia.
@@ -15,8 +16,10 @@ PEDIDOS
 - Si devuelve no_encontrado, dilo y pide que lo compruebe.
 - No digas que vas a consultar algo: consúltalo y da el resultado.
 
-OTRAS REGLAS
-- Si el cliente pide hablar con una persona, o se le nota enfadado, ofrécele pasar con un agente.
+TRANSFERENCIA
+- Si el cliente pide hablar con una persona, o se le nota enfadado, usa transferir_a_agente.
+- Si algo está fuera de tu alcance, ofrece pasar con un agente; si acepta, usa transferir_a_agente.
+- En el resumen incluye lo que ya sepas (por ejemplo, el pedido y su estado) para que el cliente no tenga que repetirlo.
 
 ESTILO (esto acabará siendo una llamada de voz)
 - Máximo dos frases por respuesta.
@@ -27,6 +30,7 @@ ESTILO (esto acabará siendo una llamada de voz)
 
 def main():
     historial = []
+    errores_pedido = 0
     print("Tienda Demo — escribe 'salir' para terminar.\n")
     while True:
         texto = input("Tú: ").strip()
@@ -36,7 +40,7 @@ def main():
             continue
         historial.append({"rol": "usuario", "texto": texto})
         try:
-            respuesta = responder_con_herramientas(SYSTEM_PROMPT, historial, DECLARACIONES, FUNCIONES)
+            respuesta, llamadas = responder_con_herramientas(SYSTEM_PROMPT, historial, DECLARACIONES, FUNCIONES)
         except Exception as e:
             print(f"[error] {type(e).__name__}: {e}")
             historial.pop()
@@ -44,6 +48,22 @@ def main():
             continue
         historial.append({"rol": "bot", "texto": respuesta})
         print(f"Bot: {respuesta}\n")
+
+        # 1) ¿El LLM ha decidido transferir?
+        transferencia = next((args for nombre, args, _ in llamadas if nombre == "transferir_a_agente"), None)
+        if transferencia:
+            print(f">>> TRANSFERENCIA · motivo: {transferencia.get('motivo')}")
+            print(f">>> Para el agente: {transferencia.get('resumen')}")
+            break
+
+        # 2) Regla dura en código: demasiados pedidos fallidos seguidos
+        for nombre, _, resultado in llamadas:
+            if nombre == "consultar_pedido":
+                errores_pedido = errores_pedido + 1 if "error" in resultado else 0
+        if errores_pedido >= MAX_ERRORES_PEDIDO:
+            print("Bot: No consigo localizar tu pedido. Te paso con un agente para que lo revise contigo.")
+            print(">>> TRANSFERENCIA · motivo: no_resuelto (regla: 2 consultas fallidas seguidas)")
+            break
 
 
 if __name__ == "__main__":
