@@ -4,6 +4,10 @@ from google.genai import errors
 from google.genai import types
 import httpx 
 import time
+import logging
+
+log = logging.getLogger(__name__)
+
 
 MODELOS = ["gemini-flash-lite-latest", "gemini-3.8-flash"]   # principal, respaldo
 
@@ -21,10 +25,10 @@ def _generar(contenidos, config=None) -> str:
         try:
             inicio = time.perf_counter()
             r = _client.models.generate_content(model=modelo, contents=contenidos, config=config)
-            print(f"[{modelo}] {time.perf_counter() - inicio:.1f} s")
+            log.info("%s respondió en %.1f s", modelo, time.perf_counter() - inicio)
             return r
         except (errors.ServerError, httpx.TimeoutException) as e:
-            print(f"[aviso] {modelo} no disponible: {e}")
+            log.warning("%s no disponible: %s", modelo, e)
             ultimo_error = e
             
     raise ultimo_error
@@ -92,7 +96,7 @@ def responder_con_herramientas(
             funcion = funciones.get(llamada.name)
             args = dict(llamada.args or {})
             resultado = funcion(**args) if funcion else {"error": "herramienta_desconocida"}
-            print(f"     [herramienta] {llamada.name}({args}) → {resultado}")
+            log.info("herramienta %s(%s) → %s", llamada.name, args, resultado)            
             realizadas.append((llamada.name, args, resultado)) 
             contenidos.append(types.Content(
                 role="user",
@@ -102,6 +106,7 @@ def responder_con_herramientas(
 
 
 if __name__ == "__main__":
+    logging.basicConfig(level=logging.INFO)
     print(preguntar("Explica en una frase qué es un IVR."))
 
 

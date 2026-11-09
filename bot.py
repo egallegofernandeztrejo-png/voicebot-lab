@@ -1,6 +1,7 @@
 from llm import responder_con_herramientas
 from herramientas import DECLARACIONES, FUNCIONES
 MAX_ERRORES_PEDIDO = 2
+import logging
 
 SYSTEM_PROMPT = """
 Eres el asistente telefónico de Tienda Demo, una tienda online ficticia.
@@ -42,7 +43,7 @@ def main():
         try:
             respuesta, llamadas = responder_con_herramientas(SYSTEM_PROMPT, historial, DECLARACIONES, FUNCIONES)
         except Exception as e:
-            print(f"[error] {type(e).__name__}: {e}")
+            logging.exception("Fallo procesando el turno")            
             historial.pop()
             print("Bot: Ahora mismo tengo problemas técnicos. Te paso con un agente.\n")
             continue
@@ -67,4 +68,8 @@ def main():
 
 
 if __name__ == "__main__":
-    main()
+    logging.basicConfig(level=logging.INFO, format="     [%(levelname)s] %(message)s")
+    try:
+        main()
+    except (KeyboardInterrupt, EOFError):
+        print("\nLlamada finalizada.")
