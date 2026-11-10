@@ -6,9 +6,12 @@ load_dotenv()
 
 client = Client(os.environ["TWILIO_ACCOUNT_SID"], os.environ["TWILIO_AUTH_TOKEN"])
 
-TWIML = """
+TWIML = f"""
 <Response>
-    <Say language="es-ES">Hola Eduardo. Esta es la primera llamada de tu voicebot. Todavía no sé conversar, pero pronto aprenderé.</Say>
+    <Connect>
+        <ConversationRelay url="{os.environ['RELAY_URL']}" language="es-ES"
+            welcomeGreeting="Hola, soy tu voicebot de pruebas. Dime algo y te lo repito." />
+    </Connect>
 </Response>
 """
 
