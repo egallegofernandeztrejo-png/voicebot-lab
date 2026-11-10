@@ -1,5 +1,7 @@
 import json
 import logging
+import asyncio
+from agente import Conversacion
 
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect
 
@@ -18,6 +20,7 @@ def salud():
 async def conversacion(ws: WebSocket):
     await ws.accept()
     log.info("Twilio conectado")
+    llamada = Conversacion()                      # estado propio de esta llamada
     try:
         while True:
             mensaje = json.loads(await ws.receive_text())
@@ -27,7 +30,13 @@ async def conversacion(ws: WebSocket):
             elif tipo == "prompt" and mensaje.get("last"):
                 texto = mensaje["voicePrompt"]
                 log.info("Cliente: %s", texto)
-                await ws.send_json({"type": "text", "token": f"Has dicho: {texto}", "last": True})
+                respuesta, transferencia = await asyncio.to_thread(llamada.turno, texto)
+                if transferencia:
+                    log.info(">>> TRANSFERENCIA · %s · %s", transferencia.get("motivo"), transferencia.get("resumen"))
+                    await ws.send_json({"type": "end", "handoffData": json.dumps(transferencia)})
+                    return
+                log.info("Bot: %s", respuesta)
+                await ws.send_json({"type": "text", "token": respuesta, "last": True})
             elif tipo == "interrupt":
                 log.info("El cliente ha interrumpido")
             elif tipo == "error":
