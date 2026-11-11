@@ -71,12 +71,10 @@ def _config(nivel: str = "low", **extra) -> types.GenerateContentConfig:
         **extra,
     )
 
-def responder_con_herramientas(
-    system_prompt: str,
-    historial: list[dict],
-    declaraciones: list[dict],
-    funciones: dict,
-) -> str:
+def responder_con_herramientas(system_prompt: str, historial: list[dict],
+                               declaraciones: list[dict], funciones: dict,
+                               finales: frozenset = frozenset(),
+                               al_llamar_herramienta=None):
     contenidos = _a_contenidos(historial)
     config = _config(
         system_instruction=system_prompt,
@@ -84,24 +82,27 @@ def responder_con_herramientas(
         tools=[types.Tool(function_declarations=declaraciones)],
         automatic_function_calling=types.AutomaticFunctionCallingConfig(disable=True),
     )
-
-    realizadas = []                                      # ← antes del for _ in range(3)
-    for _ in range(3):                                   # máximo 3 rondas de herramientas por turno
+    realizadas = []
+    for _ in range(3):
         r = _generar(contenidos, config)
         llamadas = r.function_calls or []
-        if not llamadas:                                 # no pide herramienta → es la respuesta final
-            return r.text, realizadas   
-        contenidos.append(r.candidates[0].content)       # lo que pidió el modelo, tal cual
+        if not llamadas:
+            return r.text, realizadas
+        contenidos.append(r.candidates[0].content)
         for llamada in llamadas:
+            if al_llamar_herramienta:
+                al_llamar_herramienta(llamada.name)          # avisa ANTES de ejecutar
             funcion = funciones.get(llamada.name)
             args = dict(llamada.args or {})
             resultado = funcion(**args) if funcion else {"error": "herramienta_desconocida"}
-            log.info("herramienta %s(%s) → %s", llamada.name, args, resultado)            
-            realizadas.append((llamada.name, args, resultado)) 
+            log.info("herramienta %s(%s) → %s", llamada.name, args, resultado)
+            realizadas.append((llamada.name, args, resultado))
             contenidos.append(types.Content(
                 role="user",
                 parts=[types.Part.from_function_response(name=llamada.name, response=resultado)],
             ))
+        if any(nombre in finales for nombre, _, _ in realizadas):
+            return "", realizadas                            # herramienta final: no redactar nada más
     raise RuntimeError("Demasiadas llamadas a herramientas en un mismo turno")
 
 

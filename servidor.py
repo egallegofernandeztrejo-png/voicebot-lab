@@ -2,6 +2,7 @@ import json
 import logging
 import asyncio
 from agente import Conversacion
+import time
 
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect
 
@@ -20,7 +21,17 @@ def salud():
 async def conversacion(ws: WebSocket):
     await ws.accept()
     log.info("Twilio conectado")
-    llamada = Conversacion()                      # estado propio de esta llamada
+    llamada = Conversacion()
+    loop = asyncio.get_running_loop()
+    inicio = 0.0
+
+    def avisar(herramienta: str):
+        """Se ejecuta en el hilo del agente, justo antes de una herramienta."""
+        if herramienta == "consultar_pedido":
+            log.info("Bot (relleno) a los %.1f s: Un momento, lo consulto.", time.perf_counter() - inicio)
+            asyncio.run_coroutine_threadsafe(
+                ws.send_json({"type": "text", "token": "Un momento, lo consulto.", "last": True}), loop)
+
     try:
         while True:
             mensaje = json.loads(await ws.receive_text())
@@ -30,7 +41,9 @@ async def conversacion(ws: WebSocket):
             elif tipo == "prompt" and mensaje.get("last"):
                 texto = mensaje["voicePrompt"]
                 log.info("Cliente: %s", texto)
-                respuesta, transferencia = await asyncio.to_thread(llamada.turno, texto)
+                inicio = time.perf_counter()
+                respuesta, transferencia = await asyncio.to_thread(llamada.turno, texto, avisar)
+                log.info("Turno completo en %.1f s", time.perf_counter() - inicio)
                 if transferencia:
                     log.info(">>> TRANSFERENCIA · %s · %s", transferencia.get("motivo"), transferencia.get("resumen"))
                     await ws.send_json({"type": "end", "handoffData": json.dumps(transferencia)})

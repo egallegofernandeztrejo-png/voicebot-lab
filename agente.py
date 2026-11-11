@@ -14,11 +14,11 @@ class Conversacion:
         self.historial = []
         self.errores_pedido = 0
 
-    def turno(self, texto: str) -> tuple[str, dict | None]:
+    def turno(self, texto: str, aviso=None) -> tuple[str, dict | None]:
         """Procesa lo que dice el cliente. Devuelve (respuesta, transferencia o None)."""
         self.historial.append({"rol": "usuario", "texto": texto})
         try:
-            respuesta, llamadas = responder_con_herramientas(SYSTEM_PROMPT, self.historial, DECLARACIONES, FUNCIONES)
+            respuesta, llamadas = responder_con_herramientas(SYSTEM_PROMPT, self.historial, DECLARACIONES, FUNCIONES, finales=frozenset({"transferir_a_agente"}), al_llamar_herramienta=aviso)
         except Exception:
             log.exception("Fallo procesando el turno")
             self.historial.pop()
