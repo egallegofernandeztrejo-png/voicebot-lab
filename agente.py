@@ -36,3 +36,9 @@ class Conversacion:
             return "", {"motivo": "no_resuelto", "resumen": "Dos consultas de pedido fallidas seguidas."}
 
         return respuesta, None
+
+    def recortar_ultima_respuesta(self, dicho: str):
+        """Barge-in: en el historial deja solo lo que el cliente llegó a oír."""
+        if self.historial and self.historial[-1]["rol"] == "bot":
+            self.historial[-1]["texto"] = f"{dicho}… [el cliente me interrumpió aquí]"
+            log.info("Historial recortado por interrupción: %s", self.historial[-1]["texto"])

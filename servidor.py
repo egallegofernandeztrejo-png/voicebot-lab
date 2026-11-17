@@ -62,6 +62,8 @@ async def conversacion(ws: WebSocket):
     loop = asyncio.get_running_loop()
     inicio = 0.0
     relleno_dicho = False
+    ultima_voz = None   # última respuesta "de verdad" enviada (no rellenos), para el barge-in
+    terminando = False  # tras un "end" ya no se atienden más turnos
 
     async def decir_relleno(frase: str):
         # Solo un relleno por turno. Se ejecuta siempre en el bucle asíncrono.
@@ -69,8 +71,8 @@ async def conversacion(ws: WebSocket):
         if relleno_dicho:
             return
         relleno_dicho = True
-        log.info("Bot: %s", frase)
-        await ws.send_json({"type": "text", "token": para_voz(frase), "last": True})
+        log.info("Bot (relleno) a los %.1f s: %s", time.perf_counter() - inicio, frase)
+        await ws.send_json({"type": "text", "token": frase, "last": True})
 
     async def relleno_por_tiempo():
         await asyncio.sleep(RELLENO_SEGUNDOS)
@@ -90,6 +92,10 @@ async def conversacion(ws: WebSocket):
                 log.info("Llamada %s", mensaje.get("callSid"))
 
             elif tipo == "prompt" and mensaje.get("last"):
+                if terminando:
+                    log.info("Ignorado (transferencia en curso): %s", mensaje["voicePrompt"])
+                    continue
+
                 texto = mensaje["voicePrompt"]
                 log.info("Cliente: %s", texto)
                 inicio = time.perf_counter()
@@ -102,22 +108,28 @@ async def conversacion(ws: WebSocket):
                 log.info("Turno completo en %.1f s", time.perf_counter() - inicio)
 
                 if transferencia:
+                    terminando = True
                     log.info(">>> TRANSFERENCIA · %s · %s",
                              transferencia.get("motivo"), transferencia.get("resumen"))
                     await ws.send_json({"type": "text", "last": True,
                         "token": "Te paso con un agente. Esto es una simulación. Gracias por llamar."})
-                    await asyncio.sleep(5)  # descomentar si el "end" corta la frase
-                    await ws.send_json({"type": "end", "handoffData": json.dumps(transferencia)})
+                    await asyncio.sleep(5)  # el "end" corta el audio: dejamos terminar la frase
                     await ws.send_json({"type": "end", "handoffData": json.dumps(transferencia)})
                     continue  # no cerramos nosotros: Twilio cierra el WebSocket al procesar el "end"
 
                 voz = para_voz(respuesta)
+                ultima_voz = voz
                 log.info("Bot: %s | voz: %s", respuesta, voz)
                 await ws.send_json({"type": "text", "token": voz, "last": True})
 
             elif tipo == "interrupt":
+                dicho = mensaje.get("utteranceUntilInterrupt") or ""
                 log.info("El cliente ha interrumpido a los %s ms · el bot llegó a decir: «%s»",
-                         mensaje.get("durationUntilInterruptMs"), mensaje.get("utteranceUntilInterrupt"))
+                         mensaje.get("durationUntilInterruptMs"), dicho)
+                # Solo si lo cortado es la última respuesta real (no un relleno ni el saludo)
+                if ultima_voz and dicho and ultima_voz.startswith(dicho[:15]):
+                    llamada.recortar_ultima_respuesta(dicho)
+                    ultima_voz = None
 
             elif tipo == "error":
                 log.warning("Error de Twilio: %s", mensaje.get("description"))
