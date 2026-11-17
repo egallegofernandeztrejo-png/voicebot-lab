@@ -12,7 +12,6 @@ TWIML = f"""
         <ConversationRelay url="{os.environ['RELAY_URL']}" language="es-ES"
             welcomeGreeting="Hola, soy el asistente de Tienda Demo. ¿En qué puedo ayudarte?" />
     </Connect>
-    <Say language="es-ES">Te paso con un agente. Esto es una simulación. Gracias por llamar.</Say>
 </Response>
 """
 
