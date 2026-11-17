@@ -5,7 +5,9 @@ from agente import Conversacion
 import time
 import re
 
-from fastapi import FastAPI, WebSocket, WebSocketDisconnect
+from fastapi import FastAPI, Request, WebSocket, WebSocketDisconnect
+from fastapi.responses import Response
+from urllib.parse import parse_qs
 
 logging.basicConfig(level=logging.INFO, format="     [%(levelname)s] %(message)s")
 log = logging.getLogger("servidor")
@@ -16,6 +18,30 @@ app = FastAPI()
 @app.get("/")
 def salud():
     return {"ok": True}
+
+MUSICA_ESPERA = "http://com.twilio.sounds.music.s3.amazonaws.com/MARKOVICHAMP-Borghestral.mp3"
+
+
+@app.post("/fin")
+async def fin_de_conversacion(request: Request):
+    """Twilio llama aquí cuando termina el <Connect>. Lo que devolvamos es lo siguiente que oye el cliente."""
+    datos = {k: v[0] for k, v in parse_qs((await request.body()).decode()).items()}
+    estado = datos.get("SessionStatus")
+    handoff = datos.get("HandoffData")
+    log.info("Fin de ConversationRelay · estado=%s · handoff=%s · error=%s",
+             estado, handoff, datos.get("ErrorMessage"))
+
+    if handoff:
+        transferencia = json.loads(handoff)
+        log.info("Pasando a la cola de agentes (simulada) · motivo=%s", transferencia.get("motivo"))
+        twiml = f"<Response><Play>{MUSICA_ESPERA}</Play><Hangup/></Response>"
+    elif estado == "failed":
+        twiml = ('<Response><Say language="es-ES">Lo sentimos, ha habido un problema técnico. '
+                 'Por favor, vuelve a llamar más tarde.</Say><Hangup/></Response>')
+    else:
+        twiml = "<Response><Hangup/></Response>"
+
+    return Response(content=twiml, media_type="application/xml")
 
 
 RELLENO_SEGUNDOS = 1.5  # si el turno tarda más, el bot dice algo para no dejar silencio
@@ -82,14 +108,16 @@ async def conversacion(ws: WebSocket):
                         "token": "Te paso con un agente. Esto es una simulación. Gracias por llamar."})
                     await asyncio.sleep(5)  # descomentar si el "end" corta la frase
                     await ws.send_json({"type": "end", "handoffData": json.dumps(transferencia)})
-                    return
+                    await ws.send_json({"type": "end", "handoffData": json.dumps(transferencia)})
+                    continue  # no cerramos nosotros: Twilio cierra el WebSocket al procesar el "end"
 
                 voz = para_voz(respuesta)
                 log.info("Bot: %s | voz: %s", respuesta, voz)
                 await ws.send_json({"type": "text", "token": voz, "last": True})
 
             elif tipo == "interrupt":
-                log.info("El cliente ha interrumpido")
+                log.info("El cliente ha interrumpido a los %s ms · el bot llegó a decir: «%s»",
+                         mensaje.get("durationUntilInterruptMs"), mensaje.get("utteranceUntilInterrupt"))
 
             elif tipo == "error":
                 log.warning("Error de Twilio: %s", mensaje.get("description"))

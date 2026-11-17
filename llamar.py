@@ -6,9 +6,11 @@ load_dotenv()
 
 client = Client(os.environ["TWILIO_ACCOUNT_SID"], os.environ["TWILIO_AUTH_TOKEN"])
 
+BASE = os.environ["RELAY_URL"].replace("wss://", "https://").removesuffix("/ws")
+
 TWIML = f"""
 <Response>
-    <Connect>
+    <Connect action="{BASE}/fin">
         <ConversationRelay url="{os.environ['RELAY_URL']}" language="es-ES"
             welcomeGreeting="Hola, soy el asistente de Tienda Demo. ¿En qué puedo ayudarte?" />
     </Connect>
